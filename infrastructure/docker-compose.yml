@@ -1,0 +1,127 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${S3_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${S3_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${S3_PORT}:9000"
+      - "127.0.0.1:${S3_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: pgsty/silo:RELEASE.2026-10-26T00-00-00Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    volumes:
+      - ./storage/init-buckets.sh:/init-buckets.sh:ro
+    entrypoint: ["sh", "/init-buckets.sh"]
+
+  frontend:
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    volumes:
+      - ../frontend:/app
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM}
+      FRONTEND_UPSTREAM: ${FRONTEND_UPSTREAM}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:
+  frontend_node_modules:
+  nginx_conf:

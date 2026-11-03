@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(make *)",
+      "Bash(uv sync *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run mypy *)",
+      "Bash(uv run alembic *)",
+      "Bash(npm run lint *)",
+      "Bash(npm run typecheck *)",
+      "Bash(npm run test *)",
+      "Bash(npm run build *)",
+      "Bash(npm run gen:api *)",
+      "Bash(docker compose ps *)",
+      "Bash(docker compose logs *)",
+      "Bash(docker compose config *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Edit(./docs/project/**)",
+      "Write(./docs/project/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.production)",
+      "Read(./**/.env.prod)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/id_rsa*)",
+      "Edit(./.env)",
+      "Edit(./**/.env)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(docker system prune *)",
+      "Bash(docker volume rm *)",
+      "Bash(docker volume prune *)",
+      "Bash(docker compose down -v *)",
+      "Bash(docker compose down --volumes *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "python",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/session_context.py"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "python",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/save_history.py"
+            ]
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "python",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_bash.py"
+            ],
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv",
+            "args": [
+              "run",
+              "--no-project",
+              "python",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/format_python.py"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
